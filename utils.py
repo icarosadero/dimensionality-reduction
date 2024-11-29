@@ -126,20 +126,24 @@ class SimpleTensorDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data)
 
+    def set_offset(self, offset: Offset):
+        self.offset = offset
+
     def __getitem__(self, index: int) -> torch.Tensor:
         left, right = self.offset.left, self.offset.right
         start = max(0, index - left)
         end = min(len(self.data), index + right)
         sequence = self.data[start:end]
 
-        # Pad with zeros if necessary
-        if start == 0:
-            pad_left = left - index
-            sequence = torch.cat([torch.zeros(pad_left, *self.data.shape[1:]), sequence], dim=0)
-        if end == len(self.data):
-            pad_right = (index + right) - len(self.data)
-            sequence = torch.cat([sequence, torch.zeros(pad_right, *self.data.shape[1:])], dim=0)
-
+        if len(sequence) < right + left:
+            back = torch.zeros(right + left, sequence.shape[1], dtype=float, device=self.device)
+            if index < left:
+                back[left - index:] = sequence
+            elif index > len(self.data) - right:
+                back[:right + len(self.data) - index] = sequence
+            else:
+                raise ValueError("Index out of bounds. This shouldn't happen.")
+            sequence = back[:]
         # Labels to go along with data if any
         with self.device:
             if self.labels is None:
@@ -206,7 +210,7 @@ class SupervisedNNSolver:
         with torch.no_grad():
             for _, batch in enumerate(valid_loader):
                 X, y = batch
-                prediction = self._inference(X)
+                prediction = self._inference(X.float())
                 loss = self.criterion(prediction, y)
                 self.history.append(loss.item())
         return dict(total=loss.item())
