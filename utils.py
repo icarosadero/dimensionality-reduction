@@ -2,6 +2,7 @@ import torch
 from typing import Optional, Tuple, Union
 import numpy.typing as npt
 import torch.nn as nn
+import pyspark
 import numpy as np
 from cebra.data import SingleSessionDataset
 from cebra.data.datatypes import Offset
@@ -150,7 +151,7 @@ class SimpleTensorDataset(torch.utils.data.Dataset):
                 return sequence.T
             else:
                 return sequence.T, self.labels[index].unsqueeze(0)
-
+    
 class SupervisedNNSolver:
     """Supervised neural network training"""
 
@@ -193,7 +194,7 @@ class SupervisedNNSolver:
         """
         self.optimizer.zero_grad()
         X, y = batch
-        prediction = self._inference(X)
+        prediction = self._inference(X.float())
         loss = self.criterion(prediction, y)
         loss.backward()
         self.optimizer.step()
@@ -202,7 +203,7 @@ class SupervisedNNSolver:
 
     def _inference(self, X):
         """Compute predictions for the batch."""
-        prediction = self.model(X)
+        prediction = self.model(X.float())
         return prediction
     
     def validation(self, valid_loader):
@@ -210,7 +211,50 @@ class SupervisedNNSolver:
         with torch.no_grad():
             for _, batch in enumerate(valid_loader):
                 X, y = batch
-                prediction = self._inference(X.float())
+                prediction = self._inference(X)
                 loss = self.criterion(prediction, y)
                 self.history.append(loss.item())
         return dict(total=loss.item())
+
+class RDDDataset(torch.utils.data.Dataset):
+    def __init__(self, df, x_label, y_label, device):
+        self.df = df
+        self.x_label = x_label
+        self.y_label = y_label
+        self.device = device
+    
+    def __len__(self):
+        return self.df.count()
+    
+    def __getitem__(self, index):
+        row = self.df.where(self.df.index == index).first()
+        with self.device:
+            X = torch.Tensor([row[self.x_label]]).float()
+            y = torch.Tensor([row[self.y_label]]).float()
+        return X, y
+    
+    def __getitems__(self, indices):
+        if not isinstance(indices, list) or not all(isinstance(x, int) for x in indices):
+            raise ValueError("Indices must be a list of integers")
+        rows = self.df.where(self.df.index.isin(indices)).take(len(indices))
+        with self.device:
+            X = torch.Tensor([row[self.x_label] for row in rows]).float()
+            y = torch.Tensor([row[self.y_label] for row in rows]).float()
+        return X, y
+
+class RDDDataset(torch.utils.data.Dataset):
+    def __init__(self, rdd, x_label, y_label, device):
+        self.rdd = rdd
+        self.x_label = x_label
+        self.y_label = y_label
+        self.device = device
+    
+    def __len__(self):
+        return len(self.rdd)
+    
+    def __getitem__(self, index):
+        row = self.rdd[index]
+        with self.device:
+            X = torch.Tensor([row[self.x_label]]).float()
+            y = torch.Tensor([row[self.y_label]]).float()
+        return X, y

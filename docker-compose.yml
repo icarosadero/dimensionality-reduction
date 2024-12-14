@@ -1,0 +1,24 @@
+services:
+  almond:
+    image: almondsh/almond:latest
+    user: root    
+    ports:
+      - 8003:8888
+    environment:
+      - JUPYTER_TOKEN=almond
+    volumes:
+      - .:/main/workspace
+      - cifs-volume:/main/data
+    security_opt:
+      - label:disable
+      - seccomp:unconfined
+      - apparmor:unconfined
+    cap_add:
+      - ALL
+    privileged: true
+volumes: 
+  cifs-volume:
+    driver_opts:
+      type: cifs 
+      o: username=${SMB_USER},password=${SMB_PASSWORD},vers=3.0,rw,file_mode=0777,dir_mode=0777
+      device: ${SMB_URL}
