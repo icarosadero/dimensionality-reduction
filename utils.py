@@ -6,6 +6,7 @@ import pyspark
 import numpy as np
 from cebra.data import SingleSessionDataset
 from cebra.data.datatypes import Offset
+from cebra.models import ConvolutionalModelMixin
 import warnings
 
 # Function to calculate the memory required by the model parameters
@@ -258,3 +259,51 @@ class RDDDataset(torch.utils.data.Dataset):
             X = torch.Tensor([row[self.x_label]]).float()
             y = torch.Tensor([row[self.y_label]]).float()
         return X, y
+    
+def transform(cls,X,session_id: int = None):
+    """Transform an input sequence and return the embedding.
+
+    Args:
+        X: A numpy array or torch tensor of size ``time x dimension``.
+        session_id: The session ID, an :py:class:`int` between 0 and :py:attr:`num_sessions` for
+            multisession, set to ``None`` for single session.
+
+    Returns:
+        A :py:func:`numpy.array` of size ``time x output_dimension``.
+
+    Example:
+
+        >>> import cebra
+        >>> import numpy as np
+        >>> dataset =  np.random.uniform(0, 1, (1000, 30))
+        >>> cebra_model = cebra.CEBRA(max_iterations=10)
+        >>> cebra_model.fit(dataset)
+        CEBRA(max_iterations=10)
+        >>> embedding = cebra_model.transform(dataset)
+
+    """
+    model, offset = cls._select_model(X, session_id)
+
+    # Input validation
+    input_dtype = X.dtype
+
+    with torch.no_grad():
+        model.eval()
+
+        if cls.pad_before_transform:
+            X = np.pad(X, ((offset.left, offset.right - 1), (0, 0)),
+                        mode="edge")
+        X = torch.from_numpy(X).float().to(cls.device_)
+
+        if isinstance(model, ConvolutionalModelMixin):
+            # Fully convolutional evaluation, switch (T, C) -> (1, C, T)
+            X = X.transpose(1, 0).unsqueeze(0)
+            output = model(X).cpu().numpy().squeeze(0).transpose(1, 0)
+        else:
+            # Standard evaluation, (T, C, dt)
+            output = model(X).cpu().numpy()
+
+    if input_dtype == "float64":
+        return output.astype(input_dtype)
+
+    return output
