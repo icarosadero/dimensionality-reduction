@@ -278,3 +278,20 @@ def transform(cls,X,session_id: int = None):
         return output.astype(input_dtype)
 
     return output
+
+def _convert_cmap2colorscale(cmap: str, pl_entries: int = 11, rdigits: int = 2):
+    """Convert matplotlib colormap to plotly colorscale.
+
+    Args:
+        cmap: A registered colormap name from matplotlib.
+        pl_entries: Number of colors to use in the plotly colorscale.
+        rdigits: Number of digits to round the colorscale to.
+
+    Returns:
+        pl_colorscale: List of scaled colors to plot the embeddings
+    """
+    scale = np.linspace(0, 1, pl_entries)
+    colors = (cmap(scale)[:, :3] * 255).astype(np.uint8)
+    pl_colorscale = [[float(round(s, rdigits)), f"rgb{tuple(color.tolist())}"]
+                     for s, color in zip(scale, colors)]
+    return pl_colorscale
