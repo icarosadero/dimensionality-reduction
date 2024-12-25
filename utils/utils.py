@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+from torch.utils.data import Dataset
 from sklearn.model_selection import KFold
 
 def spark_rdd_to_tensor(df, key):
@@ -66,11 +68,6 @@ def split(X, p):
         partitions += [X[d*p:]]
     return partitions
 
-def get_x_ticks(L:int, delta):
-    x_ticks = np.arange(0,L,delta)
-    x_tick_labels = [f"{t[i]/100:.2f}" for i in x_ticks]
-    return x_ticks, x_tick_labels
-
 def pandas_series_to_pytorch(df, device):
     """
     Convert a pandas Series to a PyTorch tensor and move it to a specified device.
@@ -89,3 +86,38 @@ def pandas_series_to_pytorch(df, device):
     """
 
     return torch.Tensor(df.to_list()).to(device)
+
+class Dataset(Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+    
+class Decoder(torch.nn.Module):
+    def __init__(self, latent_dimension):
+        """
+        Initialize the decoder.
+
+        Parameters
+        ----------
+        latent_dimension: int
+            The input dimension of the decoder, which should be the same as the output dimension of the encoder.
+        """
+        super(Decoder, self).__init__()
+        self.layers = torch.nn.Sequential(
+            torch.nn.Linear(latent_dimension, 3),
+            torch.nn.GELU(),
+            torch.nn.Linear(3,2)
+        )
+
+    def forward(self, x):
+        o = self.layers(x)
+        output = torch.zeros_like(o)
+        output[:,0] = torch.sin(o[:,0])
+        output[:,1] = torch.cos(o[:,1])
+        return output
