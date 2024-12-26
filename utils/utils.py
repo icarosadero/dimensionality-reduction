@@ -109,8 +109,11 @@ class Decoder(torch.nn.Module):
             The input dimension of the decoder, which should be the same as the output dimension of the encoder.
         """
         super(Decoder, self).__init__()
+        self.n = latent_dimension
         self.layers = torch.nn.Sequential(
-            torch.nn.Linear(latent_dimension, 3),
+            torch.nn.Linear(self.n, self.n),
+            torch.nn.GELU(),
+            torch.nn.Linear(self.n, 3),
             torch.nn.GELU(),
             torch.nn.Linear(3,2)
         )
